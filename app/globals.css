@@ -1,0 +1,52 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  background-color: #000000;
+  color: #ffffff;
+  overscroll-behavior: none;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+@layer components {
+  /* Texto con gradiente iridiscente de marca QUANTUM */
+  .text-quantum-gradient {
+    @apply bg-quantum-gradient bg-clip-text text-transparent bg-[length:200%_200%] animate-gradient-x;
+  }
+
+  /* Botón primario neo-brutalista con glow al hover/active */
+  .btn-quantum {
+    @apply relative rounded-2xl font-heading font-extrabold uppercase tracking-wide
+      text-black bg-quantum-gradient bg-[length:200%_200%] animate-gradient-x
+      shadow-neon-soft transition-transform duration-150
+      active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100;
+  }
+
+  /* Card oscura estándar */
+  .card-quantum {
+    @apply rounded-2xl border border-white/10 bg-brand-dark/80 backdrop-blur-sm;
+  }
+
+  .glow-border {
+    @apply border border-brand-cyan/40 shadow-neon-cyan;
+  }
+}
+
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}

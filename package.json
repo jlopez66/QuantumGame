@@ -1,0 +1,35 @@
+{
+  "name": "quantum-game",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "next": "^15.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "@supabase/supabase-js": "^2.45.0",
+    "framer-motion": "^11.11.0",
+    "canvas-confetti": "^1.9.3",
+    "qrcode.react": "^4.0.1",
+    "clsx": "^2.1.1",
+    "server-only": "^0.0.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0",
+    "@types/node": "^22.5.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/canvas-confetti": "^1.6.4",
+    "tailwindcss": "^3.4.10",
+    "postcss": "^8.4.45",
+    "autoprefixer": "^10.4.20",
+    "eslint": "^9.9.0",
+    "eslint-config-next": "^15.0.0",
+    "@eslint/eslintrc": "^3.1.0"
+  }
+}
