@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { supabase } from "@/lib/supabase/client";
-import { getDeviceId } from "@/lib/game/device";
+import { getDeviceId, resetDeviceId } from "@/lib/game/device";
 import { getStep } from "@/lib/game/rounds";
 import type { GameStateRow, PlayerRow, TeamRow } from "@/lib/supabase/types";
 import { RegistrationFlow } from "./RegistrationFlow";
@@ -85,6 +85,17 @@ export function PlayApp() {
     setTeam(newTeam);
   };
 
+  const changeUser = useCallback(async () => {
+    if (!player) return;
+    if (!window.confirm(`¿Seguro que no eres ${player.name}? Vas a volver a elegir tu foto.`)) return;
+
+    await supabase.from("players").update({ device_id: null }).eq("id", player.id);
+    resetDeviceId();
+    setPlayer(null);
+    setTeam(null);
+    setHasAnswered(false);
+  }, [player]);
+
   const submitAnswer = useCallback(
     async (answer: unknown) => {
       if (!player || !team || !gameState?.current_game || !gameState?.current_round) return;
@@ -117,7 +128,14 @@ export function PlayApp() {
   }
 
   if (!gameState || gameState.phase === "lobby") {
-    return <WaitingScreen team={team} message="¡Atento a la pantalla gigante! La partida está por comenzar…" />;
+    return (
+      <WaitingScreen
+        team={team}
+        message="¡Atento a la pantalla gigante! La partida está por comenzar…"
+        playerName={player.name}
+        onChangeUser={changeUser}
+      />
+    );
   }
 
   if (gameState.phase === "podium") {
@@ -139,6 +157,8 @@ export function PlayApp() {
               ? `Le tocó a ${myRep.name} representar a tu equipo esta ronda.`
               : "La ruleta está eligiendo representante…"
         }
+        playerName={player.name}
+        onChangeUser={changeUser}
       >
         {myRep && (
           <>
@@ -155,11 +175,25 @@ export function PlayApp() {
   }
 
   if (gameState.phase === "intro") {
-    return <WaitingScreen team={team} message="¡Memoriza la ficha en la pantalla gigante!" />;
+    return (
+      <WaitingScreen
+        team={team}
+        message="¡Memoriza la ficha en la pantalla gigante!"
+        playerName={player.name}
+        onChangeUser={changeUser}
+      />
+    );
   }
 
   if (gameState.phase === "locked") {
-    return <WaitingScreen team={team} message="Tiempo terminado. Calculando resultados…" />;
+    return (
+      <WaitingScreen
+        team={team}
+        message="Tiempo terminado. Calculando resultados…"
+        playerName={player.name}
+        onChangeUser={changeUser}
+      />
+    );
   }
 
   if (gameState.phase === "revealed") {
@@ -171,6 +205,8 @@ export function PlayApp() {
         message={
           mine ? (mine.points > 0 ? `¡Sumaron +${mine.points} pts! 🎉` : "Esta ronda no sumó puntos.") : "Resultados en la pantalla."
         }
+        playerName={player.name}
+        onChangeUser={changeUser}
       />
     );
   }
@@ -202,7 +238,14 @@ export function PlayApp() {
     );
   }
 
-  return <WaitingScreen team={team} message="Preparando la siguiente ronda…" />;
+  return (
+    <WaitingScreen
+      team={team}
+      message="Preparando la siguiente ronda…"
+      playerName={player.name}
+      onChangeUser={changeUser}
+    />
+  );
 }
 
 function FinalScreen({ team }: { team: TeamRow }) {

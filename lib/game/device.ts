@@ -9,3 +9,12 @@ export function getDeviceId(): string {
   }
   return id;
 }
+
+// Usado por "Cambiar de usuario": borra la identidad de este celular para
+// que la próxima llamada a getDeviceId() genere una nueva. El caller es
+// responsable de soltar el device_id previo en la fila de `players` antes
+// de llamar esto (ver PlayApp.changeUser).
+export function resetDeviceId(): void {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(DEVICE_ID_KEY);
+}

@@ -45,7 +45,9 @@ export function LobbyScreen({ teams, players }: Props) {
       <div className="grid w-full max-w-5xl grid-cols-5 gap-4">
         {DEPARTMENTS.map((dept) => {
           const team = teams.find((t) => t.slug === dept.slug);
-          const count = players.filter((p) => p.team_id === team?.id).length;
+          const deptPlayers = players.filter((p) => p.team_id === team?.id);
+          const joined = deptPlayers.filter((p) => p.device_id !== null).length;
+          const total = deptPlayers.length;
           return (
             <motion.div
               key={dept.slug}
@@ -55,7 +57,8 @@ export function LobbyScreen({ teams, players }: Props) {
               style={{ borderTopColor: dept.color }}
             >
               <span className="font-heading text-4xl font-extrabold" style={{ color: dept.color }}>
-                {count}
+                {joined}
+                <span className="text-2xl text-white/40">/{total}</span>
               </span>
               <span className="text-center font-body text-sm text-white/70">{dept.name}</span>
             </motion.div>
@@ -63,7 +66,9 @@ export function LobbyScreen({ teams, players }: Props) {
         })}
       </div>
 
-      <p className="font-body text-white/40">{players.length} / 60 jugadores conectados</p>
+      <p className="font-body text-white/40">
+        {players.filter((p) => p.device_id !== null).length} / {players.length} jugadores conectados
+      </p>
     </div>
   );
 }

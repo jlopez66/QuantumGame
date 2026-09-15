@@ -11,3 +11,17 @@ npm-debug.log*
 *.pem
 .vercel
 next-env.d.ts
+tsconfig.tsbuildinfo
+
+# Fotos reales del roster (datos de empleados) - no van a git.
+# Súbelas aparte (Drive, WeTransfer, etc.) o cópialas manualmente entre
+# equipos; sql/seed_roster_example.sql y public/avatars/README.md sí quedan
+# versionados como plantilla/documentación.
+public/avatars/*
+!public/avatars/README.md
+!public/avatars/*/
+public/avatars/*/*
+!public/avatars/*/.gitkeep
+
+# Generado por scripts/seed-from-files.js a partir de las fotos reales.
+sql/auto_seed.sql

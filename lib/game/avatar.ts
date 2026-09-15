@@ -1,10 +1,10 @@
 /**
- * No hay infraestructura de subida de fotos (Supabase Storage) en este
- * proyecto todavía. Mientras tanto, cualquier jugador sin `avatar_url` propio
- * recibe un avatar generado de forma determinística a partir de su nombre —
- * se ve igual en todas las pantallas y no requiere backend adicional.
- * Si más adelante quieres fotos reales, sube el archivo a un bucket público
- * de Supabase Storage y guarda esa URL en `players.avatar_url`.
+ * Las fotos reales del roster viven en public/avatars/<slug-departamento>/
+ * y su ruta se guarda en `players.avatar_url` al cargar el seed (ver
+ * sql/seed_roster_example.sql). Cualquier jugador sin `avatar_url` propio, o
+ * cuya foto todavía no se ha subido, recibe un avatar generado de forma
+ * determinística a partir de su nombre — se ve igual en todas las pantallas
+ * y no requiere backend adicional.
  */
 export function getAvatarUrl(name: string, avatarUrl?: string | null): string {
   if (avatarUrl) return avatarUrl;

@@ -7,9 +7,11 @@ interface Props {
   team: TeamRow;
   message: string;
   children?: React.ReactNode;
+  playerName?: string;
+  onChangeUser?: () => void;
 }
 
-export function WaitingScreen({ team, message, children }: Props) {
+export function WaitingScreen({ team, message, children, playerName, onChangeUser }: Props) {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center gap-8 px-6 text-center">
       <motion.div
@@ -26,6 +28,14 @@ export function WaitingScreen({ team, message, children }: Props) {
       </div>
       <p className="max-w-xs font-heading text-xl font-bold uppercase text-white">{message}</p>
       {children}
+      {onChangeUser && (
+        <button
+          onClick={onChangeUser}
+          className="font-body text-xs text-white/30 underline underline-offset-2 transition hover:text-white/60"
+        >
+          {playerName ? `¿No eres ${playerName}? Cambiar de usuario` : "Cambiar de usuario"}
+        </button>
+      )}
     </div>
   );
 }

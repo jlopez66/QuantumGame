@@ -75,9 +75,9 @@ create policy "responses_insert_only_representative" on responses
   );
 
 -- ----------------------------------------------------------------------------
--- Listo. Si vas a pre-cargar el roster de las 60 personas, revisa
--- sql/seed_roster_example.sql. Si prefieres seguir con auto-registro libre
--- (sin roster previo), no necesitas correr el seed — la gente que entre a
--- /play y no aparezca en la lista de su departamento puede registrarse ahí
--- mismo y quedará disponible para la ruleta desde esa misma ronda.
+-- Listo. Ahora corre sql/seed_roster_example.sql para pre-cargar el roster
+-- de las 60 personas (obligatorio: /play ya no tiene auto-registro libre,
+-- solo se puede reclamar un nombre ya existente en la lista) y luego
+-- sql/migration_003_remove_self_register.sql para cerrar la policy de RLS
+-- que lo permitía.
 -- ============================================================================

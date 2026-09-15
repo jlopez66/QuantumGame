@@ -111,11 +111,13 @@ create or replace view leaderboard as
 
 -- ----------------------------------------------------------------------------
 -- 6. Row Level Security
---    Evento cerrado y controlado: se habilita RLS con políticas permisivas
---    para lectura y auto-registro, pero el puntaje (teams.score), el estado
---    del juego (game_state) y quién puede responder (active_representatives)
---    SOLO se modifican desde el servidor con la service_role key (Route
---    Handlers de /admin), nunca directamente desde el cliente.
+--    Evento cerrado y controlado: el roster completo se precarga (ver
+--    sql/seed_roster_example.sql) y cada quien solo "reclama" su propia fila
+--    tocando su nombre en /play (players_claim_unclaimed). No existe
+--    auto-registro: el puntaje (teams.score), el estado del juego
+--    (game_state) y quién puede responder (active_representatives) SOLO se
+--    modifican desde el servidor con la service_role key (Route Handlers de
+--    /admin), nunca directamente desde el cliente.
 -- ----------------------------------------------------------------------------
 alter table teams enable row level security;
 alter table players enable row level security;
@@ -128,9 +130,6 @@ create policy "game_state_select_all" on game_state for select using (true);
 create policy "players_select_all" on players for select using (true);
 create policy "responses_select_all" on responses for select using (true);
 
--- Alguien que no está en el roster pre-cargado puede registrarse sobre la marcha.
-create policy "players_insert_public" on players for insert with check (true);
-
 -- "Reclamar" una fila del roster: solo si nadie la ha reclamado todavía
 -- (device_id is null), y el UPDATE debe dejarla con un device_id (no null).
 -- Esto impide que un celular le robe la identidad a alguien que ya entró.
@@ -138,6 +137,13 @@ create policy "players_claim_unclaimed" on players
   for update
   using (device_id is null)
   with check (device_id is not null);
+
+-- Camino inverso: soltar una fila ya reclamada (botón "Cambiar de usuario"
+-- en /play). Mismo modelo de confianza que players_claim_unclaimed arriba.
+create policy "players_release_own" on players
+  for update
+  using (device_id is not null)
+  with check (device_id is null);
 
 -- Solo puede insertar una respuesta el jugador que la ruleta eligió como
 -- representante de su equipo en la ronda activa (game_state.active_representatives).

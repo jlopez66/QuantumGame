@@ -22,8 +22,9 @@ Web-app tipo game show para el lanzamiento de QUANTUM. `/admin` = pantalla LED, 
 
 3. **Base de datos** (solo la primera vez en un proyecto Supabase nuevo):
    - Corre `sql/schema.sql` completo en el SQL Editor de Supabase.
-   - Si el proyecto Supabase **ya tenía** el esquema anterior corriendo, corre en su lugar `sql/migration_002_roulette.sql`.
-   - Opcional: `sql/seed_roster_example.sql` para precargar el roster de jugadores.
+   - Si el proyecto Supabase **ya tenía** el esquema anterior corriendo, corre en su lugar `sql/migration_002_roulette.sql` y luego `sql/migration_003_remove_self_register.sql`.
+   - Obligatorio: `sql/seed_roster_example.sql` (con los nombres reales) para precargar el roster de jugadores — `/play` no tiene auto-registro, solo se puede reclamar un nombre ya cargado.
+   - Sube las fotos del roster a `public/avatars/<slug-departamento>/` siguiendo la convención de `public/avatars/README.md` antes del evento.
 
 4. **Correr en local**
    ```bash
