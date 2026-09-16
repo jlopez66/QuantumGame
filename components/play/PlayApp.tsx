@@ -10,11 +10,9 @@ import { RegistrationFlow } from "./RegistrationFlow";
 import { WaitingScreen } from "./WaitingScreen";
 import { SpectatorScreen } from "./SpectatorScreen";
 import { SubmittedFeedback } from "./SubmittedFeedback";
-import { PriceInput } from "./PriceInput";
-import { CubicajeSelect } from "./CubicajeSelect";
-import { BriefReconstruct } from "./BriefReconstruct";
+import { ChoiceInput } from "./ChoiceInput";
+import { NumericInput } from "./NumericInput";
 import { Countdown } from "@/components/shared/Countdown";
-import type { TruckOption } from "@/lib/game/rounds";
 
 const DEBATE_SECONDS = 60;
 
@@ -60,8 +58,10 @@ export function PlayApp() {
   }, []);
 
   // Al cambiar de ronda, revisa si ya se envió respuesta (soporta refrescos de página).
+  // OJO: la Ronda 0 (calentamiento del Juego 1) es un valor legítimo, así que
+  // se compara contra `== null` y no con negación directa (`!round`).
   useEffect(() => {
-    if (!player || !gameState?.current_game || !gameState?.current_round) return;
+    if (!player || gameState?.current_game == null || gameState?.current_round == null) return;
     let cancelled = false;
 
     supabase
@@ -98,7 +98,7 @@ export function PlayApp() {
 
   const submitAnswer = useCallback(
     async (answer: unknown) => {
-      if (!player || !team || !gameState?.current_game || !gameState?.current_round) return;
+      if (!player || !team || gameState?.current_game == null || gameState?.current_round == null) return;
       setHasAnswered(true);
       const { error } = await supabase.from("responses").insert({
         player_id: player.id,
@@ -178,7 +178,7 @@ export function PlayApp() {
     return (
       <WaitingScreen
         team={team}
-        message="¡Memoriza la ficha en la pantalla gigante!"
+        message="¡Atento a la pantalla gigante! Ya viene la pregunta…"
         playerName={player.name}
         onChangeUser={changeUser}
       />
@@ -212,6 +212,15 @@ export function PlayApp() {
   }
 
   if (gameState.phase === "playing" && step) {
+    if (gameState.round_ends_at == null) {
+      // El host todavía está leyendo la pregunta en voz alta — el conteo (y
+      // la posibilidad de responder) arranca recién cuando presiona "Iniciar
+      // Conteo" en /admin. Nadie puede adelantarse, ni siquiera el representante.
+      return (
+        <WaitingScreen team={team} message="¡Atento! El presentador está leyendo la pregunta…" playerName={player.name} onChangeUser={changeUser} />
+      );
+    }
+
     if (!isRepresentative) {
       return (
         <SpectatorScreen
@@ -228,11 +237,12 @@ export function PlayApp() {
     return (
       <AnimatePresence mode="wait">
         <motion.div key={`${step.game}-${step.round}`} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-          {step.kind === "price" && <PriceInput step={step} endsAt={gameState.round_ends_at} onSubmit={(price) => submitAnswer({ price })} />}
-          {step.kind === "cubicaje" && (
-            <CubicajeSelect step={step} endsAt={gameState.round_ends_at} onSubmit={(code: TruckOption["code"]) => submitAnswer({ code })} />
+          {(step.kind === "binary_choice" || step.kind === "multiple_choice") && (
+            <ChoiceInput step={step} endsAt={gameState.round_ends_at} onSubmit={(choice) => submitAnswer({ choice })} />
           )}
-          {step.kind === "brief" && <BriefReconstruct step={step} endsAt={gameState.round_ends_at} onSubmit={(items) => submitAnswer(items)} />}
+          {step.kind === "numeric_input" && (
+            <NumericInput step={step} endsAt={gameState.round_ends_at} onSubmit={(value) => submitAnswer({ value })} />
+          )}
         </motion.div>
       </AnimatePresence>
     );

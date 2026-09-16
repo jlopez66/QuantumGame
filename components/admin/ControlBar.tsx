@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { GameStateRow } from "@/lib/supabase/types";
 import { callAdminAction, type AdminAction } from "@/lib/game/adminActions";
-import { getStepIndex, STEPS, TOTAL_STEPS } from "@/lib/game/rounds";
+import { getStep, getStepIndex, STEPS, TOTAL_STEPS } from "@/lib/game/rounds";
 
 export function ControlBar({ gameState }: { gameState: GameStateRow }) {
   const [busy, setBusy] = useState(false);
@@ -12,6 +12,8 @@ export function ControlBar({ gameState }: { gameState: GameStateRow }) {
     setBusy(true);
     try {
       await callAdminAction(action);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : `No se pudo ejecutar "${action}"`);
     } finally {
       setBusy(false);
     }
@@ -21,6 +23,11 @@ export function ControlBar({ gameState }: { gameState: GameStateRow }) {
   const isLastStep = stepIndex === TOTAL_STEPS - 1;
   const stepLabel = stepIndex >= 0 ? `Paso ${stepIndex + 1} / ${TOTAL_STEPS}` : "";
   const nextStep = stepIndex >= 0 && stepIndex + 1 < STEPS.length ? STEPS[stepIndex + 1] : null;
+
+  const currentStep = getStep(gameState.current_game, gameState.current_round);
+  const pendingSeconds =
+    gameState.phase === "intro" && currentStep?.introDuration != null ? currentStep.introDuration : (currentStep?.duration ?? 0);
+  const timerNotStarted = (gameState.phase === "intro" || gameState.phase === "playing") && gameState.round_ends_at == null;
 
   return (
     <div className="flex items-center justify-between border-t border-white/10 bg-brand-dark/60 px-8 py-4">
@@ -32,7 +39,7 @@ export function ControlBar({ gameState }: { gameState: GameStateRow }) {
       <div className="flex items-center gap-3">
         {gameState.phase === "lobby" && (
           <button disabled={busy} onClick={() => run("start")} className="btn-quantum px-8 py-3">
-            ▶ Iniciar Juego 1 · Ronda 1
+            ▶ Iniciar Juego 1 · Calentamiento
           </button>
         )}
 
@@ -42,13 +49,19 @@ export function ControlBar({ gameState }: { gameState: GameStateRow }) {
           </button>
         )}
 
-        {gameState.phase === "intro" && (
+        {timerNotStarted && (
+          <button disabled={busy} onClick={() => run("start_timer")} className="btn-quantum px-8 py-3 shadow-neon-cyan">
+            ▶ Iniciar Conteo ({pendingSeconds}s)
+          </button>
+        )}
+
+        {gameState.phase === "intro" && !timerNotStarted && (
           <button disabled={busy} onClick={() => run("lock")} className="btn-quantum px-8 py-3">
             ⏭ Saltar a Pantalla en Negro
           </button>
         )}
 
-        {gameState.phase === "playing" && (
+        {gameState.phase === "playing" && !timerNotStarted && (
           <button disabled={busy} onClick={() => run("lock")} className="btn-quantum px-8 py-3">
             ⏹ Terminar Ronda Ahora
           </button>

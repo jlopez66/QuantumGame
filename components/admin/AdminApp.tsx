@@ -9,9 +9,7 @@ import { QuantumLogo } from "@/components/shared/QuantumLogo";
 import { ConnectionBadge } from "@/components/shared/ConnectionBadge";
 import { LobbyScreen } from "./LobbyScreen";
 import { RouletteScreen } from "./RouletteScreen";
-import { PriceRoundScreen } from "./PriceRoundScreen";
-import { CubicajeRoundScreen } from "./CubicajeRoundScreen";
-import { BriefRoundScreen } from "./BriefRoundScreen";
+import { TriviaRoundScreen } from "./TriviaRoundScreen";
 import { PodiumScreen } from "./PodiumScreen";
 import { ControlBar } from "./ControlBar";
 import { LeaderboardSidebar } from "./Leaderboard";
@@ -59,8 +57,11 @@ export function AdminApp() {
   }, [refetchAll]);
 
   // Equipos que ya registraron al menos una respuesta para la ronda activa.
+  // OJO: la Ronda 0 del Juego 1 es un valor legítimo, así que se compara
+  // contra `== null` y no con negación directa (`!round`), que trataría el 0
+  // como "sin ronda".
   const answeredTeamIds = useMemo(() => {
-    if (!gameState?.current_game || !gameState?.current_round) return new Set<string>();
+    if (gameState?.current_game == null || gameState?.current_round == null) return new Set<string>();
     return new Set(
       responses
         .filter((r) => r.game_number === gameState.current_game && r.round_number === gameState.current_round)
@@ -115,21 +116,9 @@ export function AdminApp() {
               </motion.div>
             )}
 
-            {!["lobby", "podium", "roulette"].includes(gameState.phase) && gameState.current_game === 1 && (
-              <motion.div key="game1" {...fadeProps} className="h-full">
-                <PriceRoundScreen gameState={gameState} teams={teams} answeredTeamIds={answeredTeamIds} />
-              </motion.div>
-            )}
-
-            {!["lobby", "podium", "roulette"].includes(gameState.phase) && gameState.current_game === 2 && (
-              <motion.div key="game2" {...fadeProps} className="h-full">
-                <CubicajeRoundScreen gameState={gameState} teams={teams} answeredTeamIds={answeredTeamIds} />
-              </motion.div>
-            )}
-
-            {!["lobby", "podium", "roulette"].includes(gameState.phase) && gameState.current_game === 3 && (
-              <motion.div key="game3" {...fadeProps} className="h-full">
-                <BriefRoundScreen gameState={gameState} teams={teams} answeredTeamIds={answeredTeamIds} />
+            {!["lobby", "podium", "roulette"].includes(gameState.phase) && gameState.current_game != null && (
+              <motion.div key={`game${gameState.current_game}`} {...fadeProps} className="h-full">
+                <TriviaRoundScreen gameState={gameState} teams={teams} answeredTeamIds={answeredTeamIds} />
               </motion.div>
             )}
 

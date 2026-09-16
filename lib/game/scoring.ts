@@ -1,7 +1,6 @@
 import "server-only";
-import type { GameNumber, RoundNumber } from "./rounds";
-import { getStep } from "./rounds";
-import { PRICE_ANSWERS, TRUCK_ANSWERS } from "./answers";
+import type { Step } from "./rounds";
+import { GAME1_ANSWERS, GAME2_ANSWERS, GAME3_ANSWERS } from "./answers";
 
 export interface TeamAnswerInput {
   team_id: string;
@@ -12,6 +11,12 @@ export interface TeamScoreResult {
   team_id: string;
   points: number;
   submitted: unknown;
+}
+
+export interface ScoredRound {
+  results: TeamScoreResult[];
+  correctAnswer: unknown;
+  adminFunFact?: string;
 }
 
 function mode<T extends string>(values: T[]): T | null {
@@ -39,80 +44,89 @@ function groupByTeam(responses: TeamAnswerInput[]): Map<string, unknown[]> {
   return map;
 }
 
-/** Juego 1: promedio de las cifras del equipo; gana el más cercano SIN PASARSE. */
-export function scoreGame1(
+/** Un equipo acierta si el voto mayoritario de su representante coincide EXACTO con la respuesta correcta. */
+function scoreExactMatch(
   responses: TeamAnswerInput[],
   teamIds: string[],
-  round: RoundNumber
-): { results: TeamScoreResult[]; correctAnswer: number } {
-  const correct = PRICE_ANSWERS[round];
+  correctAnswer: string,
+  points: number
+): TeamScoreResult[] {
+  const byTeam = groupByTeam(responses);
+
+  return teamIds.map((team_id) => {
+    const raw = (byTeam.get(team_id) ?? []) as Array<{ choice?: string; code?: string } | string>;
+    const choices = raw.map((a) => (typeof a === "string" ? a : (a?.choice ?? a?.code))).filter(Boolean) as string[];
+    const teamAnswer = mode(choices);
+    return { team_id, points: teamAnswer === correctAnswer ? points : 0, submitted: teamAnswer };
+  });
+}
+
+/** Promedio de las cifras del equipo; gana SOLO el equipo más cercano SIN PASARSE. */
+function scoreClosestWithoutGoingOver(
+  responses: TeamAnswerInput[],
+  teamIds: string[],
+  correctAnswer: number,
+  points: number
+): TeamScoreResult[] {
   const byTeam = groupByTeam(responses);
 
   const averages = teamIds.map((team_id) => {
-    const raw = (byTeam.get(team_id) ?? []) as Array<{ price: number } | number>;
-    const nums = raw.map((a) => (typeof a === "number" ? a : Number(a?.price))).filter((n) => Number.isFinite(n));
+    const raw = (byTeam.get(team_id) ?? []) as Array<{ value?: number; price?: number } | number>;
+    const nums = raw
+      .map((a) => (typeof a === "number" ? a : Number(a?.value ?? a?.price)))
+      .filter((n) => Number.isFinite(n));
     const avg = nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : null;
     return { team_id, avg };
   });
 
-  const underOrEqual = averages.filter((t) => t.avg !== null && t.avg <= correct);
+  const underOrEqual = averages.filter((t) => t.avg !== null && t.avg <= correctAnswer);
   const pool = underOrEqual.length > 0 ? underOrEqual : averages.filter((t) => t.avg !== null);
 
   let winnerId: string | null = null;
   if (pool.length > 0) {
     winnerId = pool.reduce((best, t) =>
-      Math.abs((t.avg as number) - correct) < Math.abs((best.avg as number) - correct) ? t : best
+      Math.abs((t.avg as number) - correctAnswer) < Math.abs((best.avg as number) - correctAnswer) ? t : best
     ).team_id;
   }
 
-  const results: TeamScoreResult[] = averages.map((t) => ({
+  return averages.map((t) => ({
     team_id: t.team_id,
-    points: t.team_id === winnerId ? 100 : 0,
+    points: t.team_id === winnerId ? points : 0,
     submitted: t.avg,
   }));
-
-  return { results, correctAnswer: correct };
 }
 
-/** Juego 2: el equipo acierta si el voto mayoritario coincide con el camión correcto. */
-export function scoreGame2(
+/**
+ * Los 3 juegos comparten el mismo trío de formatos (calentamiento binario,
+ * más/menos u opción múltiple, y — solo Juego 1 — cifra exacta). Cada uno
+ * lee su propia tabla de respuestas de lib/game/answers.ts según `step.game`.
+ */
+function scoreTrivia(
+  step: Extract<Step, { kind: "binary_choice" | "multiple_choice" | "numeric_input" }>,
   responses: TeamAnswerInput[],
-  teamIds: string[],
-  round: RoundNumber
-): { results: TeamScoreResult[]; correctAnswer: string } {
-  const correct = TRUCK_ANSWERS[round];
-  const byTeam = groupByTeam(responses);
+  teamIds: string[]
+): ScoredRound {
+  const answers = step.game === 1 ? GAME1_ANSWERS : step.game === 2 ? GAME2_ANSWERS : GAME3_ANSWERS;
+  const answer = answers[step.round];
 
-  const results: TeamScoreResult[] = teamIds.map((team_id) => {
-    const raw = (byTeam.get(team_id) ?? []) as Array<{ code: string } | string>;
-    const codes = raw.map((a) => (typeof a === "string" ? a : a?.code)).filter(Boolean) as string[];
-    const teamAnswer = mode(codes);
-    return { team_id, points: teamAnswer === correct ? 100 : 0, submitted: teamAnswer };
-  });
+  if (step.kind === "numeric_input") {
+    const correct = Number(answer.correctAnswer);
+    return {
+      results: scoreClosestWithoutGoingOver(responses, teamIds, correct, step.points),
+      correctAnswer: correct,
+      adminFunFact: answer.adminFunFact,
+    };
+  }
 
-  return { results, correctAnswer: correct };
+  const correct = String(answer.correctAnswer);
+  return {
+    results: scoreExactMatch(responses, teamIds, correct, step.points),
+    correctAnswer: correct,
+    adminFunFact: answer.adminFunFact,
+  };
 }
 
-/** Juego 3: 25 pts por cada uno de los 4 ítems del brief que el equipo recuerde bien. */
-export function scoreGame3(
-  responses: TeamAnswerInput[],
-  teamIds: string[],
-  game: GameNumber,
-  round: RoundNumber
-): { results: TeamScoreResult[]; correctAnswer: string[] } {
-  const step = getStep(game, round);
-  const correctItems = step && step.kind === "brief" ? step.items : [];
-  const byTeam = groupByTeam(responses);
-
-  const results: TeamScoreResult[] = teamIds.map((team_id) => {
-    const raw = (byTeam.get(team_id) ?? []) as string[][];
-    const teamGuess = correctItems.map((_, slotIdx) => {
-      const votes = raw.map((r) => r[slotIdx]).filter(Boolean);
-      return mode(votes);
-    });
-    const correctCount = teamGuess.filter((guess, i) => guess === correctItems[i]).length;
-    return { team_id, points: correctCount * 25, submitted: teamGuess };
-  });
-
-  return { results, correctAnswer: correctItems };
+/** Punto único de entrada: puntúa cualquier paso según su `kind`, sin importar a qué juego pertenezca. */
+export function scoreStep(step: Step, responses: TeamAnswerInput[], teamIds: string[]): ScoredRound {
+  return scoreTrivia(step, responses, teamIds);
 }

@@ -59,7 +59,7 @@ create table if not exists game_state (
   phase text not null default 'lobby'
     check (phase in ('lobby', 'roulette', 'intro', 'playing', 'locked', 'revealed', 'podium')),
   current_game smallint check (current_game between 1 and 3),   -- 1, 2 o 3
-  current_round smallint check (current_round between 1 and 3), -- 1, 2 o 3 (3 rondas por juego)
+  current_round smallint check (current_round between 0 and 3), -- Juego 1: 0-3 (0 = calentamiento); Juegos 2 y 3: 1-3
   round_duration_seconds int not null default 45,
   round_ends_at timestamptz,           -- usado por los clientes para sincronizar el countdown
   -- Representante elegido por la ruleta en cada equipo para la ronda activa:
@@ -82,7 +82,7 @@ create table if not exists responses (
   player_id uuid not null references players(id) on delete cascade,
   team_id uuid not null references teams(id) on delete cascade,
   game_number smallint not null check (game_number between 1 and 3),
-  round_number smallint not null check (round_number between 1 and 3),
+  round_number smallint not null check (round_number between 0 and 3), -- Juego 1: 0-3 (0 = calentamiento); Juegos 2 y 3: 1-3
   answer jsonb not null,               -- number (juego1) | { code } (juego2) | string[4] (juego3)
   points_awarded int not null default 0,
   created_at timestamptz not null default now(),

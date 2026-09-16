@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/server";
-import { getNextStep, getStep, type GameNumber, type RoundNumber } from "@/lib/game/rounds";
-import { scoreGame1, scoreGame2, scoreGame3 } from "@/lib/game/scoring";
+import { getNextStep, getStep, STEPS, type GameNumber, type RoundNumber } from "@/lib/game/rounds";
+import { scoreStep } from "@/lib/game/scoring";
 import type { ActiveRepresentatives, Database, RevealPayload } from "@/lib/supabase/types";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
 
-type Action = "start" | "lock" | "reveal" | "next" | "reset";
+type Action = "start" | "lock" | "reveal" | "next" | "reset" | "start_timer";
 
 interface Body {
   action: Action;
@@ -44,13 +44,26 @@ export async function POST(req: Request) {
   const { action } = (await req.json()) as Body;
   const db = createAdminClient();
 
+  try {
+    return await handleAction(action, db);
+  } catch (err) {
+    // Sin este catch, un error de Postgres (ej. una migración de esquema que
+    // falta) queda "tragado" en el `await db....update()` de más abajo: la
+    // ruta responde 200 igual y en /admin parece que el botón "no hace nada".
+    const message = err instanceof Error ? err.message : "Error desconocido";
+    console.error("[admin-action]", action, message);
+    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+  }
+}
+
+async function handleAction(action: Action, db: SupabaseClient<Database>) {
   switch (action) {
     case "start":
     case "next": {
       const { data: state } = await db.from("game_state").select("*").eq("id", 1).single();
       const current =
         action === "start" ? null : { game: state?.current_game ?? null, round: state?.current_round ?? null };
-      const step = action === "start" ? getStep(1, 1) : getNextStep(current?.game as GameNumber, current?.round as RoundNumber);
+      const step = action === "start" ? STEPS[0] : getNextStep(current?.game as GameNumber, current?.round as RoundNumber);
 
       if (!step) {
         await db
@@ -63,7 +76,7 @@ export async function POST(req: Request) {
       // Antes de arrancar la ronda, la ruleta elige 1 representante por mesa.
       const activeRepresentatives = await pickRepresentatives(db);
 
-      await db
+      const { error } = await db
         .from("game_state")
         .update({
           phase: "roulette",
@@ -77,32 +90,40 @@ export async function POST(req: Request) {
         })
         .eq("id", 1);
 
+      if (error) throw new Error(`No se pudo iniciar la ronda: ${error.message}`);
+
       return NextResponse.json({ ok: true, phase: "roulette" });
     }
 
     case "lock": {
       const { data: state } = await db.from("game_state").select("*").eq("id", 1).single();
-      const step = state?.current_game && state?.current_round ? getStep(state.current_game, state.current_round) : null;
+      const step =
+        state?.current_game != null && state?.current_round != null ? getStep(state.current_game, state.current_round) : null;
 
-      // Fin del debate de 60s tras la ruleta -> arranca el intro (Juego 3) o el timer de respuesta.
+      // Fin del debate de 60s tras la ruleta -> entra a la pregunta, pero el
+      // conteo se queda en pausa (round_ends_at = null) hasta que el host
+      // presione "Iniciar Conteo" (acción start_timer) — así puede leer la
+      // pregunta en voz alta (o dejar correr el GIF del Juego 3) sin que el
+      // tiempo de respuesta ya esté corriendo. Si la ronda declara `media` +
+      // `introDuration` (hoy, el Juego 3), primero pasa por la fase `intro`
+      // para proyectar esa animación antes de mostrar la pregunta.
       if (state?.phase === "roulette" && step) {
-        const isBrief = step.kind === "brief";
-        const seconds = isBrief ? step.introDuration : step.duration;
+        const hasIntro = step.introDuration != null;
         const { error } = await db
           .from("game_state")
           .update({
-            phase: isBrief ? "intro" : "playing",
-            round_ends_at: new Date(Date.now() + seconds * 1000).toISOString(),
+            phase: hasIntro ? "intro" : "playing",
+            round_ends_at: null,
             updated_at: new Date().toISOString(),
           })
           .eq("id", 1)
           .eq("phase", "roulette");
-        if (!error) return NextResponse.json({ ok: true, phase: isBrief ? "intro" : "playing" });
+        if (!error) return NextResponse.json({ ok: true, phase: hasIntro ? "intro" : "playing" });
       }
 
-      // Fin del intro del Juego 3 (pantalla en negro) -> arranca el tiempo de respuesta.
+      // Fin del intro (GIF del Juego 3) -> arranca el tiempo de respuesta.
       if (state?.phase === "intro" && step) {
-        await db
+        const { error: introError } = await db
           .from("game_state")
           .update({
             phase: "playing",
@@ -111,6 +132,7 @@ export async function POST(req: Request) {
           })
           .eq("id", 1)
           .eq("phase", "intro");
+        if (introError) throw new Error(introError.message);
         return NextResponse.json({ ok: true, phase: "playing" });
       }
 
@@ -126,11 +148,37 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: true, phase: "locked" });
     }
 
+    // El host presiona esto cuando termina de leer la pregunta en voz alta:
+    // recién ahí arranca el conteo visible (round_ends_at) tanto en /admin
+    // como en /play. Antes de esto, `round_ends_at` es null y el componente
+    // Countdown simplemente muestra el tiempo total sin moverse.
+    case "start_timer": {
+      const { data: state } = await db.from("game_state").select("*").eq("id", 1).single();
+      const step =
+        state?.current_game != null && state?.current_round != null ? getStep(state.current_game, state.current_round) : null;
+
+      if (!step || (state?.phase !== "intro" && state?.phase !== "playing") || state?.round_ends_at != null) {
+        return NextResponse.json({ ok: false, error: "No hay un conteo pendiente de iniciar" }, { status: 400 });
+      }
+
+      const seconds = state.phase === "intro" && step.introDuration != null ? step.introDuration : step.duration;
+
+      const { error } = await db
+        .from("game_state")
+        .update({ round_ends_at: new Date(Date.now() + seconds * 1000).toISOString(), updated_at: new Date().toISOString() })
+        .eq("id", 1)
+        .is("round_ends_at", null); // evita que un doble click reinicie el conteo ya arrancado
+
+      if (error) throw new Error(error.message);
+      return NextResponse.json({ ok: true, phase: state.phase });
+    }
+
     case "reveal": {
       const { data: state } = await db.from("game_state").select("*").eq("id", 1).single();
       const game = state?.current_game as GameNumber | null;
       const round = state?.current_round as RoundNumber | null;
-      if (!game || !round) {
+      const step = game != null && round != null ? getStep(game, round) : null;
+      if (game == null || round == null || !step) {
         return NextResponse.json({ ok: false, error: "No hay ronda activa" }, { status: 400 });
       }
 
@@ -147,12 +195,7 @@ export async function POST(req: Request) {
 
       const input = (responses ?? []).map((r) => ({ team_id: r.team_id, answer: r.answer }));
 
-      const scored =
-        game === 1
-          ? scoreGame1(input, teamIds, round)
-          : game === 2
-            ? scoreGame2(input, teamIds, round)
-            : scoreGame3(input, teamIds, game, round);
+      const scored = scoreStep(step, input, teamIds);
 
       // Suma los puntos otorgados al puntaje acumulado de cada equipo.
       for (const r of scored.results) {
@@ -172,6 +215,7 @@ export async function POST(req: Request) {
 
       const reveal: RevealPayload = {
         correctAnswer: scored.correctAnswer,
+        adminFunFact: scored.adminFunFact,
         results: scored.results.map((r) => {
           const team = teams?.find((t) => t.id === r.team_id);
           return {

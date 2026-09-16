@@ -85,6 +85,7 @@ export type RevealTeamResult = {
 export type RevealPayload = {
   correctAnswer: unknown;
   results: RevealTeamResult[];
+  adminFunFact?: string;
 };
 
 export type GameStatePayload = { reveal?: RevealPayload } | Record<string, never>;
@@ -103,7 +104,7 @@ export type GameStateRow = {
   id: number;
   phase: Phase;
   current_game: 1 | 2 | 3 | null;
-  current_round: 1 | 2 | 3 | null;
+  current_round: 0 | 1 | 2 | 3 | null;
   round_duration_seconds: number;
   round_ends_at: string | null;
   active_representatives: ActiveRepresentatives;
@@ -115,7 +116,7 @@ export type GameStateInsert = {
   id?: number;
   phase?: Phase;
   current_game?: 1 | 2 | 3 | null;
-  current_round?: 1 | 2 | 3 | null;
+  current_round?: 0 | 1 | 2 | 3 | null;
   round_duration_seconds?: number;
   round_ends_at?: string | null;
   active_representatives?: ActiveRepresentatives;
@@ -127,7 +128,7 @@ export type GameStateUpdate = {
   id?: number;
   phase?: Phase;
   current_game?: 1 | 2 | 3 | null;
-  current_round?: 1 | 2 | 3 | null;
+  current_round?: 0 | 1 | 2 | 3 | null;
   round_duration_seconds?: number;
   round_ends_at?: string | null;
   active_representatives?: ActiveRepresentatives;
@@ -140,7 +141,7 @@ export type ResponseRow = {
   player_id: string;
   team_id: string;
   game_number: 1 | 2 | 3;
-  round_number: 1 | 2 | 3;
+  round_number: 0 | 1 | 2 | 3;
   answer: unknown;
   points_awarded: number;
   created_at: string;
@@ -151,7 +152,7 @@ export type ResponseInsert = {
   player_id: string;
   team_id: string;
   game_number: 1 | 2 | 3;
-  round_number: 1 | 2 | 3;
+  round_number: 0 | 1 | 2 | 3;
   answer: unknown;
   points_awarded?: number;
   created_at?: string;
@@ -162,7 +163,7 @@ export type ResponseUpdate = {
   player_id?: string;
   team_id?: string;
   game_number?: 1 | 2 | 3;
-  round_number?: 1 | 2 | 3;
+  round_number?: 0 | 1 | 2 | 3;
   answer?: unknown;
   points_awarded?: number;
   created_at?: string;
