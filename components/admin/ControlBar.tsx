@@ -45,6 +45,22 @@ export function ControlBar({ gameState }: { gameState: GameStateRow }) {
           </button>
         )}
 
+        {/* TEMPORAL — solo para pruebas de desarrollo: libera a todos los que
+            se registraron en /play y pone los puntajes en 0 sin salir del
+            lobby. Quitar este botón antes del evento en vivo. */}
+        {gameState.phase === "lobby" && (
+          <button
+            disabled={busy}
+            onClick={() => {
+              if (confirm("[PRUEBAS] ¿Borrar todos los registros de /play y reiniciar puntajes? Solo para desarrollo."))
+                run("reset");
+            }}
+            className="rounded-2xl border border-dashed border-white/20 px-5 py-3 font-body text-xs uppercase tracking-wide text-white/40 transition hover:border-red-400/50 hover:text-red-400"
+          >
+            🧪 Reset de pruebas
+          </button>
+        )}
+
         {timerNotStarted && gameState.phase === "roulette" && (
           <button disabled={busy} onClick={() => run("start_timer")} className="btn-quantum px-8 py-3 shadow-neon-cyan">
             🎲 Girar Ruleta

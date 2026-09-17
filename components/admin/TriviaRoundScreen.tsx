@@ -108,10 +108,8 @@ export function TriviaRoundScreen({ gameState, teams, answeredTeamIds }: Props) 
               // parejas incluso si el archivo original trae fondo transparente.
               <div className="grid h-full gap-3" style={{ gridTemplateColumns: `repeat(${step.images.length}, 1fr)` }}>
                 {step.images.map((src, i) => (
-                  <div key={src} className="relative h-full w-full overflow-hidden rounded-2xl bg-white p-6">
-                    <div className="relative h-full w-full">
-                      <Image src={src} alt={`${step.title} — producto ${i + 1}`} fill className="object-contain" />
-                    </div>
+                  <div key={src} className="relative h-full w-full overflow-hidden rounded-2xl bg-white">
+                    <Image src={src} alt={`${step.title} — producto ${i + 1}`} fill className="object-contain" />
                   </div>
                 ))}
               </div>
