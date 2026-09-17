@@ -47,6 +47,7 @@ export type PlayerRow = {
   name: string;
   avatar_url: string | null;
   device_id: string | null;
+  times_represented: number;
   created_at: string;
   last_seen_at: string;
 };
@@ -58,6 +59,7 @@ export type PlayerInsert = {
   name: string;
   avatar_url?: string | null;
   device_id?: string | null;
+  times_represented?: number;
   created_at?: string;
   last_seen_at?: string;
 };
@@ -69,6 +71,7 @@ export type PlayerUpdate = {
   name?: string;
   avatar_url?: string | null;
   device_id?: string | null;
+  times_represented?: number;
   created_at?: string;
   last_seen_at?: string;
 };

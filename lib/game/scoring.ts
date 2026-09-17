@@ -5,7 +5,13 @@ import { GAME1_ANSWERS, GAME2_ANSWERS, GAME3_ANSWERS } from "./answers";
 export interface TeamAnswerInput {
   team_id: string;
   answer: unknown;
+  created_at?: string;
 }
+
+// Bono para desempatar cuando 2 o más equipos aciertan la misma pregunta:
+// el que respondió primero se lleva estos puntos extra. No aplica si solo un
+// equipo acertó (no hay empate que romper) ni en la Ronda 0 (vale 0 pts).
+const SPEED_BONUS_POINTS = 10;
 
 export interface TeamScoreResult {
   team_id: string;
@@ -44,7 +50,12 @@ function groupByTeam(responses: TeamAnswerInput[]): Map<string, unknown[]> {
   return map;
 }
 
-/** Un equipo acierta si el voto mayoritario de su representante coincide EXACTO con la respuesta correcta. */
+/**
+ * Un equipo acierta si el voto mayoritario de su representante coincide EXACTO
+ * con la respuesta correcta. Si 2 o más equipos aciertan, el que respondió
+ * primero (menor `created_at`) se lleva un bono extra para que no queden
+ * empatados en el marcador.
+ */
 function scoreExactMatch(
   responses: TeamAnswerInput[],
   teamIds: string[],
@@ -53,12 +64,30 @@ function scoreExactMatch(
 ): TeamScoreResult[] {
   const byTeam = groupByTeam(responses);
 
-  return teamIds.map((team_id) => {
+  const earliestByTeam = new Map<string, string>();
+  for (const r of responses) {
+    if (!r.created_at) continue;
+    const existing = earliestByTeam.get(r.team_id);
+    if (!existing || r.created_at < existing) earliestByTeam.set(r.team_id, r.created_at);
+  }
+
+  const teamAnswers = teamIds.map((team_id) => {
     const raw = (byTeam.get(team_id) ?? []) as Array<{ choice?: string; code?: string } | string>;
     const choices = raw.map((a) => (typeof a === "string" ? a : (a?.choice ?? a?.code))).filter(Boolean) as string[];
     const teamAnswer = mode(choices);
-    return { team_id, points: teamAnswer === correctAnswer ? points : 0, submitted: teamAnswer };
+    return { team_id, teamAnswer, isCorrect: teamAnswer === correctAnswer };
   });
+
+  const correctByTime = teamAnswers
+    .filter((t) => t.isCorrect && earliestByTeam.has(t.team_id))
+    .sort((a, b) => earliestByTeam.get(a.team_id)!.localeCompare(earliestByTeam.get(b.team_id)!));
+  const fastestTeamId = correctByTime.length > 1 ? correctByTime[0].team_id : null;
+
+  return teamAnswers.map((t) => ({
+    team_id: t.team_id,
+    points: t.isCorrect ? points + (points > 0 && t.team_id === fastestTeamId ? SPEED_BONUS_POINTS : 0) : 0,
+    submitted: t.teamAnswer,
+  }));
 }
 
 /** Promedio de las cifras del equipo; gana SOLO el equipo más cercano SIN PASARSE. */

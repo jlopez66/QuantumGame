@@ -19,7 +19,7 @@ export type RoundNumber = 0 | 1 | 2 | 3;
 // Los 3 minijuegos comparten el mismo trío de formatos de pregunta/respuesta:
 //   JUEGO 1 — "Cifra Exacta": calentamiento + más/menos + puzzle + número exacto
 //   JUEGO 2 — "KeepMe y Servicios": calentamiento + 3 preguntas de opción múltiple
-//   JUEGO 3 — "Ojo de Águila": calentamiento + 3 preguntas sobre un GIF/foto
+//   JUEGO 3 — "Ojo de Águila": calentamiento + 3 preguntas sobre un video
 //             proyectado en /admin durante la fase `intro` (ver `media` +
 //             `introDuration` abajo) — el celular no muestra la pregunta ni
 //             las opciones hasta que el host avanza a la fase `playing`.
@@ -34,7 +34,7 @@ export interface BinaryChoiceStep {
   options: [string, string];
   points: number;
   duration: number; // segundos para responder
-  media?: string; // GIF/foto que se proyecta en /admin ANTES de la pregunta
+  media?: string; // video (.mp4) que se proyecta en /admin ANTES de la pregunta
   introDuration?: number; // segundos que se proyecta `media` (requiere `media`)
 }
 
@@ -124,7 +124,7 @@ export const STEPS: Step[] = [
     game: 2,
     round: 0,
     title: "Calentamiento: Kits de Bienvenida",
-    images: [],
+    images: ["/minijuego2/kits-bienvenida.png"],
     question:
       "¿En QUANTUM, cuando apruebas 150 Kits de Bienvenida, el inventario se descuenta AUTOMÁTICAMENTE o todavía hay que mandarle un WhatsApp a César?",
     options: ["AUTOMÁTICO", "WHATSAPP A CÉSAR"],
@@ -136,7 +136,7 @@ export const STEPS: Step[] = [
     game: 2,
     round: 1,
     title: "Cubicaje Automático",
-    images: [],
+    images: ["/minijuego2/cubicaje-automatico.png"],
     question:
       "QUANTUM cubica todo solo. Si un evento suma 17 m³, un NHR carga 9 m³ y una Turbo carga 15 m³... ¿Qué asignará la app para llevar todo sin desperdiciar presupuesto?",
     options: ["1 Turbo", "2 Camiones NHR", "1 Turbo + 1 NHR", "1 Camión de 10T"],
@@ -148,7 +148,7 @@ export const STEPS: Step[] = [
     game: 2,
     round: 2,
     title: "Reserva de Bodega",
-    images: [],
+    images: ["/minijuego2/reserva-bodega.png"],
     question: "Un cliente necesita guardar material en nuestra bodega para una gira de eventos. ¿Cuál es el PRIMER paso oficial?",
     options: [
       "Dejar las cajas tiradas en recepción y salir corriendo.",
@@ -164,7 +164,7 @@ export const STEPS: Step[] = [
     game: 2,
     round: 3,
     title: "Tracking en Tiempo Real",
-    images: [],
+    images: ["/minijuego2/tracking-tiempo-real.png"],
     question:
       "Viernes 4:00 PM. El cliente llama en pánico preguntando si los 500 kits ya llegaron al evento en Cartagena. ¿Tú qué haces?",
     options: [
@@ -187,7 +187,7 @@ export const STEPS: Step[] = [
     round: 0,
     title: "Calentamiento: Ojo de Águila",
     images: [],
-    media: "/minijuego3/inflable.webp",
+    media: "/minijuego3/inflable.mp4",
     introDuration: 10,
     question: "¿De qué color era el inflable triste de la foto que acabas de ver?",
     options: ["ROJO", "VERDE NEÓN", "AMARILLO", "AZUL"],
@@ -200,7 +200,7 @@ export const STEPS: Step[] = [
     round: 1,
     title: "Carga Rápida",
     images: [],
-    media: "/minijuego3/camion.gif",
+    media: "/minijuego3/camion.mp4",
     introDuration: 10,
     question: "¡Rápido! ¿Cuántas cajas azules de KeepMe cargaron en el camión?",
     options: ["2 CAJAS", "3 CAJAS", "4 CAJAS", "5 CAJAS"],
@@ -213,7 +213,7 @@ export const STEPS: Step[] = [
     round: 2,
     title: "Memoria de Montaje",
     images: [],
-    media: "/minijuego3/secuencia.gif",
+    media: "/minijuego3/secuencia.mp4",
     introDuration: 10,
     question: "¡Memoria! Según la secuencia que acaba de pasar, ¿cuál fue el TERCER elemento en instalarse?",
     options: ["ESTRUCTURA TRUSS", "SILLAS", "PANTALLA LED", "CONSOLA DE AUDIO"],
@@ -226,7 +226,7 @@ export const STEPS: Step[] = [
     round: 3,
     title: "Etiqueta Frágil",
     images: [],
-    media: "/minijuego3/banda.gif",
+    media: "/minijuego3/banda.mp4",
     introDuration: 10,
     question: "¿Qué color de etiqueta tenía la caja Anvil que decía 'FRÁGIL'?",
     options: ["ETIQUETA VERDE", "ETIQUETA ROJA", "ETIQUETA AZUL", "ETIQUETA AMARILLA"],

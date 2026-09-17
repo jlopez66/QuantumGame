@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { supabase } from "@/lib/supabase/client";
 import { getDeviceId, resetDeviceId } from "@/lib/game/device";
+import { HEARTBEAT_INTERVAL_MS } from "@/lib/game/presence";
 import { getStep } from "@/lib/game/rounds";
 import type { GameStateRow, PlayerRow, TeamRow } from "@/lib/supabase/types";
 import { RegistrationFlow } from "./RegistrationFlow";
@@ -80,6 +81,30 @@ export function PlayApp() {
     };
   }, [player, gameState?.current_game, gameState?.current_round]);
 
+  // "Señal de vida": mientras esta pestaña siga abierta, refresca
+  // last_seen_at cada HEARTBEAT_INTERVAL_MS. /admin considera "conectado" a
+  // quien tenga un last_seen_at reciente (ver lib/game/presence.ts) — así, si
+  // alguien cierra la página o pierde señal, deja de contar como conectado
+  // sin que se borre su registro (puede volver a entrar cuando quiera).
+  useEffect(() => {
+    if (!player) return;
+
+    const beat = () => {
+      supabase
+        .from("players")
+        .update({ last_seen_at: new Date().toISOString() })
+        .eq("id", player.id)
+        .then();
+    };
+
+    beat();
+    const interval = setInterval(beat, HEARTBEAT_INTERVAL_MS);
+    return () => clearInterval(interval);
+    // Depende solo del id a propósito: no queremos reiniciar el intervalo
+    // cada vez que `player` se refresca por otro motivo (ej. Realtime).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [player?.id]);
+
   const handleRegistered = (newPlayer: PlayerRow, newTeam: TeamRow) => {
     setPlayer(newPlayer);
     setTeam(newTeam);
@@ -152,7 +177,7 @@ export function PlayApp() {
         team={team}
         message={
           isRepresentative
-            ? "¡Fuiste elegido/a para responder esta ronda!"
+            ? "¡Fuiste elegido/a! Pasa al frente."
             : myRep
               ? `Le tocó a ${myRep.name} representar a tu equipo esta ronda.`
               : "La ruleta está eligiendo representante…"
@@ -164,8 +189,8 @@ export function PlayApp() {
           <>
             <p className="max-w-xs font-body text-white/50">
               {isRepresentative
-                ? "Tu mesa debe ayudarte a decidir la respuesta. ¡Debatan rápido!"
-                : "Acércate a su puesto y ayúdenlo/a a decidir la respuesta."}
+                ? "Camina al frente ya — tu equipo te ayuda a decidir la respuesta mientras llegas."
+                : "Ayúdenlo/a a decidir la respuesta mientras pasa al frente."}
             </p>
             <Countdown endsAt={gameState.round_ends_at} totalSeconds={DEBATE_SECONDS} size="sm" />
           </>

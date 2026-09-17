@@ -43,8 +43,20 @@ export function AdminApp() {
       .on("postgres_changes", { event: "*", schema: "public", table: "teams" }, () => {
         refetchAll();
       })
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "players" }, (payload) => {
-        setPlayers((prev) => [...prev, payload.new as PlayerRow]);
+      .on("postgres_changes", { event: "*", schema: "public", table: "players" }, (payload) => {
+        // El roster viene pre-cargado: "reclamar" tu nombre en /play es un
+        // UPDATE sobre una fila que ya existe (se llena device_id), no un
+        // INSERT — por eso hay que escuchar los 3 eventos, no solo inserts,
+        // o la TV nunca se entera de que alguien entró sin recargar.
+        if (payload.eventType === "INSERT") {
+          setPlayers((prev) => [...prev, payload.new as PlayerRow]);
+        } else if (payload.eventType === "UPDATE") {
+          const updated = payload.new as PlayerRow;
+          setPlayers((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+        } else if (payload.eventType === "DELETE") {
+          const removedId = (payload.old as Partial<PlayerRow>).id;
+          setPlayers((prev) => prev.filter((p) => p.id !== removedId));
+        }
       })
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "responses" }, (payload) => {
         setResponses((prev) => [...prev, payload.new as ResponseRow]);
@@ -94,11 +106,22 @@ export function AdminApp() {
     );
   }
 
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+  const playUrl = `${siteUrl}/play`;
+
   return (
     <div className="relative flex min-h-screen flex-col bg-black">
       <header className="flex items-center justify-between border-b border-white/10 px-8 py-4">
         <QuantumLogo className="text-3xl" />
-        <ConnectionBadge />
+        <div className="flex items-center gap-4">
+          {gameState.phase !== "lobby" && (
+            <p className="font-body text-xs text-white/40">
+              ¿Se te salió alguien? Que entre en{" "}
+              <span className="font-heading font-bold text-brand-green">{playUrl.replace(/^https?:\/\//, "")}</span>
+            </p>
+          )}
+          <ConnectionBadge />
+        </div>
       </header>
 
       <div className="relative flex flex-1">

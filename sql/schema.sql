@@ -43,6 +43,7 @@ create table if not exists players (
   name text not null,
   avatar_url text,                    -- si es null, el cliente genera un avatar con lib/game/avatar.ts
   device_id text unique,              -- null hasta que alguien "reclama" esta fila desde su celular
+  times_represented int not null default 0, -- cuántas veces ya salió como representante (prioridad en la ruleta)
   created_at timestamptz not null default now(),
   last_seen_at timestamptz not null default now()
 );
@@ -144,6 +145,15 @@ create policy "players_release_own" on players
   for update
   using (device_id is not null)
   with check (device_id is null);
+
+-- "Señal de vida": mientras la pestaña de /play sigue abierta, actualiza
+-- last_seen_at cada pocos segundos (ver lib/game/presence.ts) para que
+-- /admin sepa quién sigue conectado de verdad. Mismo modelo de confianza que
+-- las policies de arriba (evento cerrado, sin auth por usuario individual).
+create policy "players_heartbeat" on players
+  for update
+  using (device_id is not null)
+  with check (device_id is not null);
 
 -- Solo puede insertar una respuesta el jugador que la ruleta eligió como
 -- representante de su equipo en la ronda activa (game_state.active_representatives).

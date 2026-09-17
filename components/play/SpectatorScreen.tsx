@@ -23,6 +23,10 @@ export function SpectatorScreen({ team, representative, endsAt, totalSeconds }: 
           alt={representative.name}
           className="h-28 w-28 rounded-full border-4"
           style={{ borderColor: team.color, boxShadow: `0 0 40px ${team.color}` }}
+          onError={(e) => {
+            e.currentTarget.onerror = null;
+            e.currentTarget.src = getAvatarUrl(representative.name);
+          }}
         />
       ) : (
         <div
@@ -47,7 +51,7 @@ export function SpectatorScreen({ team, representative, endsAt, totalSeconds }: 
       </p>
       <p className="max-w-xs font-body text-white/60">
         {representative
-          ? "Acércate a su puesto, debatan la respuesta y ayúdalo a ganar puntos para el equipo."
+          ? "Ya está al frente respondiendo por el equipo — anímalo/a desde tu puesto."
           : "Anímalos desde tu puesto — la próxima ronda la ruleta puede elegirte a ti."}
       </p>
 

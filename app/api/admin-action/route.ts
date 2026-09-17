@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/server";
+import { ONLINE_THRESHOLD_MS } from "@/lib/game/presence";
 import { getNextStep, getStep, STEPS, type GameNumber, type RoundNumber } from "@/lib/game/rounds";
 import { scoreStep } from "@/lib/game/scoring";
 import type { ActiveRepresentatives, Database, RevealPayload } from "@/lib/supabase/types";
@@ -7,7 +8,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
 
-type Action = "start" | "lock" | "reveal" | "next" | "reset" | "start_timer";
+type Action = "start" | "lock" | "reveal" | "next" | "reset" | "start_timer" | "repeat_round";
 
 interface Body {
   action: Action;
@@ -18,40 +19,69 @@ interface Body {
 const ROULETTE_DEBATE_SECONDS = 60;
 
 /**
- * Elige al azar 1 representante por equipo entre los jugadores YA reclamados
- * (device_id no nulo) de ese equipo. Un equipo sin nadie conectado
- * simplemente no aparece en el resultado — esa mesa no podrá responder esta
- * ronda (0 pts, igual que si nadie hubiera contestado).
+ * Elige al azar 1 representante por equipo entre los jugadores que estén
+ * REALMENTE en línea ahora mismo (last_seen_at reciente — ver
+ * lib/game/presence.ts), no solo entre quienes alguna vez reclamaron su
+ * nombre. Un equipo sin nadie conectado simplemente no aparece en el
+ * resultado — esa mesa no podrá responder esta ronda (0 pts, igual que si
+ * nadie hubiera contestado).
+ *
+ * Prioridad: dentro de cada mesa, solo se sortea entre quienes tengan el
+ * `times_represented` más bajo (los que menos han salido) — así se reparte
+ * el turno entre todos antes de repetir a alguien. Puede repetir a alguien
+ * si ya todos en su mesa llevan el mismo número de turnos.
  */
 async function pickRepresentatives(db: SupabaseClient<Database>): Promise<ActiveRepresentatives> {
   const { data: teams } = await db.from("teams").select("id");
+  const onlineSince = new Date(Date.now() - ONLINE_THRESHOLD_MS).toISOString();
   const { data: players } = await db
     .from("players")
-    .select("id, team_id, name, avatar_url")
-    .not("device_id", "is", null);
+    .select("id, team_id, name, avatar_url, times_represented")
+    .not("device_id", "is", null)
+    .gte("last_seen_at", onlineSince);
 
   const reps: ActiveRepresentatives = {};
   for (const team of teams ?? []) {
     const pool = (players ?? []).filter((p) => p.team_id === team.id);
     if (pool.length === 0) continue;
-    const chosen = pool[Math.floor(Math.random() * pool.length)];
+    const minTurns = Math.min(...pool.map((p) => p.times_represented));
+    const priorityPool = pool.filter((p) => p.times_represented === minTurns);
+    const chosen = priorityPool[Math.floor(Math.random() * priorityPool.length)];
     reps[team.id] = { player_id: chosen.id, name: chosen.name, avatar_url: chosen.avatar_url };
   }
+
   return reps;
 }
 
-export async function POST(req: Request) {
-  const { action } = (await req.json()) as Body;
-  const db = createAdminClient();
+// Separado de pickRepresentatives a propósito: solo se debe llamar DESPUÉS
+// de confirmar que el UPDATE de game_state realmente tomó esta ruleta (ver
+// el `.select()` + chequeo de fila afectada en "start_timer"). Si se llamara
+// siempre, un doble click en "Girar Ruleta" incrementaría el contador de
+// alguien por una ronda que en realidad nunca se jugó.
+async function bumpTimesRepresented(db: SupabaseClient<Database>, reps: ActiveRepresentatives) {
+  for (const rep of Object.values(reps)) {
+    const { data: playerRow } = await db.from("players").select("times_represented").eq("id", rep.player_id).single();
+    await db
+      .from("players")
+      .update({ times_represented: (playerRow?.times_represented ?? 0) + 1 })
+      .eq("id", rep.player_id);
+  }
+}
 
+export async function POST(req: Request) {
+  let action: Action | undefined;
   try {
+    ({ action } = (await req.json()) as Body);
+    const db = createAdminClient();
     return await handleAction(action, db);
   } catch (err) {
-    // Sin este catch, un error de Postgres (ej. una migración de esquema que
-    // falta) queda "tragado" en el `await db....update()` de más abajo: la
-    // ruta responde 200 igual y en /admin parece que el botón "no hace nada".
+    // Todo el cuerpo va dentro del try (incluyendo req.json() y
+    // createAdminClient()) a propósito: si cualquiera de esos dos falla antes
+    // de llegar aquí, Next devuelve su propia página de error en texto plano
+    // ("Internal Server Error"), no JSON — y el cliente truena al intentar
+    // parsearla. Con el catch envolviendo todo, siempre respondemos JSON.
     const message = err instanceof Error ? err.message : "Error desconocido";
-    console.error("[admin-action]", action, message);
+    console.error("[admin-action]", action ?? "?", message);
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }
@@ -73,9 +103,10 @@ async function handleAction(action: Action, db: SupabaseClient<Database>) {
         return NextResponse.json({ ok: true, phase: "podium" });
       }
 
-      // Antes de arrancar la ronda, la ruleta elige 1 representante por mesa.
-      const activeRepresentatives = await pickRepresentatives(db);
-
+      // La ruleta todavía NO elige representante aquí: entra a la fase
+      // `roulette` con active_representatives vacío y el conteo en pausa. El
+      // host debe presionar "Girar Ruleta" (acción start_timer) para que
+      // recién ahí se elija a alguien y arranque la animación + el debate.
       const { error } = await db
         .from("game_state")
         .update({
@@ -83,8 +114,8 @@ async function handleAction(action: Action, db: SupabaseClient<Database>) {
           current_game: step.game,
           current_round: step.round,
           round_duration_seconds: step.duration,
-          round_ends_at: new Date(Date.now() + ROULETTE_DEBATE_SECONDS * 1000).toISOString(),
-          active_representatives: activeRepresentatives,
+          round_ends_at: null,
+          active_representatives: {},
           payload: {},
           updated_at: new Date().toISOString(),
         })
@@ -148,16 +179,43 @@ async function handleAction(action: Action, db: SupabaseClient<Database>) {
       return NextResponse.json({ ok: true, phase: "locked" });
     }
 
-    // El host presiona esto cuando termina de leer la pregunta en voz alta:
-    // recién ahí arranca el conteo visible (round_ends_at) tanto en /admin
-    // como en /play. Antes de esto, `round_ends_at` es null y el componente
-    // Countdown simplemente muestra el tiempo total sin moverse.
+    // El host presiona esto cuando está listo para que arranque el conteo
+    // visible (round_ends_at) tanto en /admin como en /play. Antes de esto,
+    // `round_ends_at` es null y el componente Countdown simplemente muestra
+    // el tiempo total sin moverse.
     case "start_timer": {
       const { data: state } = await db.from("game_state").select("*").eq("id", 1).single();
+
+      if (state?.round_ends_at != null) {
+        return NextResponse.json({ ok: false, error: "No hay un conteo pendiente de iniciar" }, { status: 400 });
+      }
+
+      // Fase `roulette`: "Girar Ruleta" — recién aquí se elige 1 representante
+      // por mesa (antes nadie sabe quién va a responder) y arranca el debate.
+      if (state?.phase === "roulette") {
+        const activeRepresentatives = await pickRepresentatives(db);
+        const { data: updated, error } = await db
+          .from("game_state")
+          .update({
+            active_representatives: activeRepresentatives,
+            round_ends_at: new Date(Date.now() + ROULETTE_DEBATE_SECONDS * 1000).toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", 1)
+          .eq("phase", "roulette")
+          .is("round_ends_at", null) // evita que un doble click vuelva a sortear representante
+          .select();
+        if (error) throw new Error(error.message);
+        // Si no afectó ninguna fila, otro click (o el auto-avance) ya ganó la
+        // carrera — no hay que sumarle un turno a nadie por un sorteo descartado.
+        if (updated && updated.length > 0) await bumpTimesRepresented(db, activeRepresentatives);
+        return NextResponse.json({ ok: true, phase: "roulette" });
+      }
+
       const step =
         state?.current_game != null && state?.current_round != null ? getStep(state.current_game, state.current_round) : null;
 
-      if (!step || (state?.phase !== "intro" && state?.phase !== "playing") || state?.round_ends_at != null) {
+      if (!step || (state?.phase !== "intro" && state?.phase !== "playing")) {
         return NextResponse.json({ ok: false, error: "No hay un conteo pendiente de iniciar" }, { status: 400 });
       }
 
@@ -181,6 +239,11 @@ async function handleAction(action: Action, db: SupabaseClient<Database>) {
       if (game == null || round == null || !step) {
         return NextResponse.json({ ok: false, error: "No hay ronda activa" }, { status: 400 });
       }
+      if (state?.phase !== "locked") {
+        // Evita sumar los puntos dos veces si "reveal" se dispara más de una
+        // vez para la misma ronda (doble click, dos pestañas de /admin, etc.).
+        return NextResponse.json({ ok: false, error: "Esta ronda ya fue revelada" }, { status: 400 });
+      }
 
       const activeRepresentatives = (state?.active_representatives ?? {}) as ActiveRepresentatives;
 
@@ -189,11 +252,11 @@ async function handleAction(action: Action, db: SupabaseClient<Database>) {
 
       const { data: responses } = await db
         .from("responses")
-        .select("team_id, answer")
+        .select("team_id, answer, created_at")
         .eq("game_number", game)
         .eq("round_number", round);
 
-      const input = (responses ?? []).map((r) => ({ team_id: r.team_id, answer: r.answer }));
+      const input = (responses ?? []).map((r) => ({ team_id: r.team_id, answer: r.answer, created_at: r.created_at }));
 
       const scored = scoreStep(step, input, teamIds);
 
@@ -237,16 +300,72 @@ async function handleAction(action: Action, db: SupabaseClient<Database>) {
           round_ends_at: null,
           updated_at: new Date().toISOString(),
         })
-        .eq("id", 1);
+        .eq("id", 1)
+        .eq("phase", "locked");
 
       return NextResponse.json({ ok: true, phase: "revealed", reveal });
+    }
+
+    // El host lo presiona en la fase `revealed` cuando algo salió mal con esa
+    // pregunta específica (error de contenido, etc.): descuenta los puntos ya
+    // otorgados en ESA ronda, borra las respuestas, libera a los
+    // representantes que salieron (para que la ruleta los pueda priorizar de
+    // nuevo) y vuelve a la fase `roulette` para repetir la misma ronda desde cero.
+    case "repeat_round": {
+      const { data: state } = await db.from("game_state").select("*").eq("id", 1).single();
+      const game = state?.current_game;
+      const round = state?.current_round;
+
+      if (game == null || round == null || state?.phase !== "revealed") {
+        return NextResponse.json({ ok: false, error: "Solo puedes repetir una ronda que ya fue revelada" }, { status: 400 });
+      }
+
+      const reveal = state?.payload && "reveal" in state.payload ? state.payload.reveal : undefined;
+      if (reveal) {
+        for (const r of reveal.results) {
+          if (r.points <= 0) continue;
+          const { data: teamRow } = await db.from("teams").select("score").eq("id", r.team_id).single();
+          await db
+            .from("teams")
+            .update({ score: Math.max(0, (teamRow?.score ?? 0) - r.points) })
+            .eq("id", r.team_id);
+        }
+      }
+
+      const activeRepresentatives = (state?.active_representatives ?? {}) as ActiveRepresentatives;
+      for (const rep of Object.values(activeRepresentatives)) {
+        const { data: playerRow } = await db.from("players").select("times_represented").eq("id", rep.player_id).single();
+        await db
+          .from("players")
+          .update({ times_represented: Math.max(0, (playerRow?.times_represented ?? 0) - 1) })
+          .eq("id", rep.player_id);
+      }
+
+      await db.from("responses").delete().eq("game_number", game).eq("round_number", round);
+
+      const { error } = await db
+        .from("game_state")
+        .update({
+          phase: "roulette",
+          round_ends_at: null,
+          active_representatives: {},
+          payload: {},
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", 1);
+
+      if (error) throw new Error(error.message);
+      return NextResponse.json({ ok: true, phase: "roulette" });
     }
 
     case "reset": {
       await db.from("responses").delete().neq("player_id", "00000000-0000-0000-0000-000000000000");
       // No se borra el roster: solo se "libera" (device_id = null) para que
       // cada quien pueda reclamar su nombre de nuevo en el siguiente ensayo.
-      await db.from("players").update({ device_id: null }).neq("id", "00000000-0000-0000-0000-000000000000");
+      await db
+        .from("players")
+        .update({ device_id: null, times_represented: 0 })
+        .neq("id", "00000000-0000-0000-0000-000000000000");
       await db.from("teams").update({ score: 0 }).neq("id", "00000000-0000-0000-0000-000000000000");
       await db
         .from("game_state")

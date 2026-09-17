@@ -6,7 +6,9 @@ import { Countdown } from "@/components/shared/Countdown";
 import { callAdminAction } from "@/lib/game/adminActions";
 import { getAvatarUrl } from "@/lib/game/avatar";
 import { DEPARTMENTS } from "@/lib/game/departments";
+import { isOnline } from "@/lib/game/presence";
 import { getStep } from "@/lib/game/rounds";
+import { useNowTick } from "@/lib/game/useNowTick";
 import type { ActiveRepresentative, GameStateRow, PlayerRow, TeamRow } from "@/lib/supabase/types";
 
 const SPIN_BASE_MS = 2200;
@@ -22,6 +24,11 @@ interface Props {
 
 export function RouletteScreen({ gameState, teams, players }: Props) {
   const step = getStep(gameState.current_game, gameState.current_round);
+  // El backend solo llena active_representatives cuando el host presiona
+  // "Girar Ruleta" (acción start_timer) — hasta entonces, esta pantalla se
+  // queda en un estado de espera con los dados "vivos" pero sin girar.
+  const hasSpun = Object.keys(gameState.active_representatives).length > 0;
+  const now = useNowTick(5000);
   const columnCount = DEPARTMENTS.filter((d) => teams.some((t) => t.slug === d.slug)).length;
   const [doneCount, setDoneCount] = useState(0);
   const allDone = columnCount > 0 && doneCount >= columnCount;
@@ -38,7 +45,7 @@ export function RouletteScreen({ gameState, teams, players }: Props) {
           {step?.title ?? "Nueva Ronda"}
         </p>
         <h2 className="text-quantum-gradient font-heading text-5xl font-extrabold uppercase">
-          ¡Girando la Ruleta de Representantes!
+          {hasSpun ? "¡Girando la Ruleta de Representantes!" : "Ruleta de Representantes"}
         </h2>
       </div>
 
@@ -46,7 +53,12 @@ export function RouletteScreen({ gameState, teams, players }: Props) {
         {DEPARTMENTS.map((dept, i) => {
           const team = teams.find((t) => t.slug === dept.slug);
           if (!team) return null;
-          const pool = players.filter((p) => p.team_id === team.id && p.device_id);
+
+          if (!hasSpun) {
+            return <RouletteIdleColumn key={team.id} team={team} />;
+          }
+
+          const pool = players.filter((p) => p.team_id === team.id && isOnline(p.last_seen_at, now));
           const winner = gameState.active_representatives[team.id];
           return (
             <RouletteColumn
@@ -61,6 +73,16 @@ export function RouletteScreen({ gameState, teams, players }: Props) {
         })}
       </div>
 
+      {!hasSpun && (
+        <motion.p
+          animate={{ opacity: [0.5, 1, 0.5] }}
+          transition={{ repeat: Infinity, duration: 1.8, ease: "easeInOut" }}
+          className="font-heading text-xl font-bold uppercase text-white/60"
+        >
+          🎲 Esperando a que el presentador gire la ruleta…
+        </motion.p>
+      )}
+
       {allDone && (
         <motion.div
           initial={{ opacity: 0, y: 15 }}
@@ -68,7 +90,7 @@ export function RouletteScreen({ gameState, teams, players }: Props) {
           className="flex flex-col items-center gap-4 text-center"
         >
           <p className="font-heading text-2xl font-extrabold uppercase text-white">
-            ¡Tienen {DEBATE_SECONDS} segundos para debatir en mesa!
+            ¡El representante debe pasar al frente! {DEBATE_SECONDS} segundos para prepararse.
           </p>
           <Countdown
             endsAt={gameState.round_ends_at}
@@ -78,6 +100,23 @@ export function RouletteScreen({ gameState, teams, players }: Props) {
           />
         </motion.div>
       )}
+    </div>
+  );
+}
+
+/** Tarjeta "viva" de un equipo mientras se espera que el host presione Girar Ruleta. */
+function RouletteIdleColumn({ team }: { team: TeamRow }) {
+  return (
+    <div className="card-quantum flex flex-col items-center gap-3 border-t-4 p-4" style={{ borderTopColor: team.color }}>
+      <span className="font-body text-xs uppercase tracking-wide text-white/50">{team.name}</span>
+      <motion.div
+        animate={{ rotate: [0, -12, 12, -8, 8, 0] }}
+        transition={{ repeat: Infinity, duration: 1.6, ease: "easeInOut" }}
+        className="flex h-20 w-20 items-center justify-center rounded-full border-2 border-white/15 text-4xl"
+      >
+        🎲
+      </motion.div>
+      <span className="h-10 text-center font-heading text-sm font-bold leading-tight text-white/30">???</span>
     </div>
   );
 }
@@ -142,11 +181,27 @@ function RouletteColumn({ team, pool, winner, spinDurationMs, onDone }: ColumnPr
       >
         {spinning && displayed && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={getAvatarUrl(displayed.name, displayed.avatar_url)} alt="" className="h-full w-full object-cover" />
+          <img
+            src={getAvatarUrl(displayed.name, displayed.avatar_url)}
+            alt=""
+            className="h-full w-full object-cover"
+            onError={(e) => {
+              e.currentTarget.onerror = null;
+              e.currentTarget.src = getAvatarUrl(displayed.name);
+            }}
+          />
         )}
-        {!spinning && finalAvatar && (
+        {!spinning && finalAvatar && winner && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={finalAvatar} alt="" className="h-full w-full object-cover" />
+          <img
+            src={finalAvatar}
+            alt=""
+            className="h-full w-full object-cover"
+            onError={(e) => {
+              e.currentTarget.onerror = null;
+              e.currentTarget.src = getAvatarUrl(winner.name);
+            }}
+          />
         )}
         {!spinning && !finalAvatar && <span className="text-2xl">🎲</span>}
       </div>

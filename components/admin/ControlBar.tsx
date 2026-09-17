@@ -27,7 +27,9 @@ export function ControlBar({ gameState }: { gameState: GameStateRow }) {
   const currentStep = getStep(gameState.current_game, gameState.current_round);
   const pendingSeconds =
     gameState.phase === "intro" && currentStep?.introDuration != null ? currentStep.introDuration : (currentStep?.duration ?? 0);
-  const timerNotStarted = (gameState.phase === "intro" || gameState.phase === "playing") && gameState.round_ends_at == null;
+  const timerNotStarted =
+    (gameState.phase === "roulette" || gameState.phase === "intro" || gameState.phase === "playing") &&
+    gameState.round_ends_at == null;
 
   return (
     <div className="flex items-center justify-between border-t border-white/10 bg-brand-dark/60 px-8 py-4">
@@ -43,13 +45,19 @@ export function ControlBar({ gameState }: { gameState: GameStateRow }) {
           </button>
         )}
 
-        {gameState.phase === "roulette" && (
+        {timerNotStarted && gameState.phase === "roulette" && (
+          <button disabled={busy} onClick={() => run("start_timer")} className="btn-quantum px-8 py-3 shadow-neon-cyan">
+            🎲 Girar Ruleta
+          </button>
+        )}
+
+        {gameState.phase === "roulette" && !timerNotStarted && (
           <button disabled={busy} onClick={() => run("lock")} className="btn-quantum px-8 py-3">
             ⏭ Iniciar Tiempo de Respuesta Ahora
           </button>
         )}
 
-        {timerNotStarted && (
+        {timerNotStarted && gameState.phase !== "roulette" && (
           <button disabled={busy} onClick={() => run("start_timer")} className="btn-quantum px-8 py-3 shadow-neon-cyan">
             ▶ Iniciar Conteo ({pendingSeconds}s)
           </button>
@@ -74,9 +82,25 @@ export function ControlBar({ gameState }: { gameState: GameStateRow }) {
         )}
 
         {gameState.phase === "revealed" && (
-          <button disabled={busy} onClick={() => run("next")} className="btn-quantum px-8 py-3">
-            {isLastStep || !nextStep ? "🎉 Ver Podio Final" : "⏭ Siguiente Ronda"}
-          </button>
+          <>
+            <button
+              disabled={busy}
+              onClick={() => {
+                if (
+                  confirm(
+                    "¿Repetir esta pregunta? Se borran las respuestas de esta ronda y se descuentan los puntos que ya se otorgaron."
+                  )
+                )
+                  run("repeat_round");
+              }}
+              className="rounded-2xl border border-white/15 px-5 py-3 font-body text-xs uppercase tracking-wide text-white/50 transition hover:border-yellow-400/50 hover:text-yellow-400"
+            >
+              🔁 Repetir Pregunta
+            </button>
+            <button disabled={busy} onClick={() => run("next")} className="btn-quantum px-8 py-3">
+              {isLastStep || !nextStep ? "🎉 Ver Podio Final" : "⏭ Siguiente Ronda"}
+            </button>
+          </>
         )}
 
         {gameState.phase === "podium" && (

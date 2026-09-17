@@ -3,6 +3,8 @@
 import { QRCodeSVG } from "qrcode.react";
 import { motion } from "framer-motion";
 import { DEPARTMENTS } from "@/lib/game/departments";
+import { isOnline } from "@/lib/game/presence";
+import { useNowTick } from "@/lib/game/useNowTick";
 import type { PlayerRow, TeamRow } from "@/lib/supabase/types";
 
 interface Props {
@@ -13,6 +15,9 @@ interface Props {
 export function LobbyScreen({ teams, players }: Props) {
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
   const playUrl = `${siteUrl}/play`;
+  // Se recalcula cada pocos segundos para que alguien "desaparezca" de la
+  // lista en cuanto se le vence el latido, no solo cuando llega un evento nuevo.
+  const now = useNowTick(5000);
 
   return (
     <div className="flex h-full flex-col items-center justify-center gap-12">
@@ -46,7 +51,7 @@ export function LobbyScreen({ teams, players }: Props) {
         {DEPARTMENTS.map((dept) => {
           const team = teams.find((t) => t.slug === dept.slug);
           const deptPlayers = players.filter((p) => p.team_id === team?.id);
-          const joined = deptPlayers.filter((p) => p.device_id !== null).length;
+          const joined = deptPlayers.filter((p) => isOnline(p.last_seen_at, now)).length;
           const total = deptPlayers.length;
           return (
             <motion.div
@@ -67,7 +72,7 @@ export function LobbyScreen({ teams, players }: Props) {
       </div>
 
       <p className="font-body text-white/40">
-        {players.filter((p) => p.device_id !== null).length} / {players.length} jugadores conectados
+        {players.filter((p) => isOnline(p.last_seen_at, now)).length} / {players.length} jugadores conectados
       </p>
     </div>
   );
